@@ -1,7 +1,4 @@
 use std::ops::*;
-use std::iter::*;
-use std::slice::Iter;
-use std::str::Chars;
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct IndexedSlice<'a, T: 'a> {
@@ -12,10 +9,6 @@ pub struct IndexedSlice<'a, T: 'a> {
 impl<'a, T> IndexedSlice<'a, T> {
     pub fn from_slice(slice: &'a [T]) -> Self {
         IndexedSlice { slice, position: 0 }
-    }
-
-    pub fn iter(&self) -> Iter<T> {
-        self.slice.iter()
     }
 
     pub fn pop_first(&mut self) -> Option<&'a T> {
@@ -36,13 +29,13 @@ impl<'a, T> IndexedSlice<'a, T> {
             _ => Some(&self.slice[0]),
         }
     }
-	
-	pub fn try_get(self, index: usize) -> Option<&'a T> {
-		match self.len() {
-			0 | 1 => None,
-			_ => Some(&self.slice[index]),
-		}
-	}
+
+    pub fn try_get(self, index: usize) -> Option<&'a T> {
+        match self.len() {
+            0 | 1 => None,
+            _ => Some(&self.slice[index]),
+        }
+    }
 
     pub fn position(&self) -> usize {
         self.position

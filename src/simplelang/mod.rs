@@ -21,12 +21,6 @@ pub struct TextPosition {
     pub index: usize,
 }
 
-impl TextPosition {
-    fn next(&self) -> Self {
-        TextPosition { index: self.index + 1 }
-    }
-}
-
 static UNKNOWN_POSITION: TextPosition = TextPosition { index: 0 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]

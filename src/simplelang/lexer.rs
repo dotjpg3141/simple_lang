@@ -1,173 +1,160 @@
 use std::io;
 use std::io::BufRead;
 use std::str;
-use std::iter;
 use std::collections::HashMap;
 use simplelang::*;
 use simplelang::indexed_slice::*;
 
 type LexSlice<'a> = IndexedSlice<'a, char>;
 
-
-
-pub struct Lexer {
-    keyword_mapping: HashMap<&'static str, TokenKind>,
+lazy_static! {
+	static ref KEYWORD_MAPPING: HashMap<&'static str, TokenKind> = {
+		map! {
+			"fn" => TokenKind::FnKeyword
+		}
+	};
 }
 
-impl Lexer {
-    pub fn new() -> Self {
-        Lexer {
-            keyword_mapping: map! {
-				"fn" => TokenKind::FnKeyword
-			},
-        }
+pub fn lex<TIn>(input: TIn) -> SyntaxResult<Vec<Token>>
+where
+    TIn: io::Read,
+{
+    let input = io::BufReader::new(input);
+    let mut tokens = Vec::new();
+
+    for line in input.lines() {
+        let line: Vec<_> = line.expect("unable to read input file").chars().collect();
+        let mut slice = IndexedSlice::from_chars(&line);
+        lex_line(&mut slice, &mut tokens)?;
     }
 
-    pub fn lex<TIn>(&self, input: TIn) -> SyntaxResult<Vec<Token>>
-    where
-        TIn: io::Read,
-    {
-        let input = io::BufReader::new(input);
-        let mut position = TextPosition { index: 0 };
-        let mut tokens = Vec::new();
+    return Ok(tokens);
+}
 
-        for line in input.lines() {
-            let line: Vec<_> = line.expect("unable to read input file").chars().collect();
-            let mut slice = IndexedSlice::from_chars(&line);
-            self.line(&mut slice, &mut tokens)?;
+fn lex_line(line: &mut LexSlice, result: &mut Vec<Token>) -> SyntaxResult<()> {
+
+    while let Some(c) = line.first() {
+        let c = *c;
+
+        if is_whitespace(c) {
+            line.pop_first();
+            continue;
         }
 
-        return Ok(tokens);
-    }
+        let token = if is_identifier_start(c) {
+            let id_token = lex_identifier(line)?;
 
-    fn line(&self, line: &mut LexSlice, result: &mut Vec<Token>) -> SyntaxResult<()> {
-
-        while let Some(c) = line.first() {
-            let c = *c;
-
-            if is_whitespace(c) {
-                line.pop_first();
-                continue;
-            }
-
-            let token = if is_identifier_start(c) {
-                let id_token = self.identifier(line)?;
-
-                if let Some(kind) = self.keyword_mapping.get(&id_token.text[..]) {
-                    Token {
-                        kind: *kind,
-                        ..id_token
-                    }
-                } else {
-                    id_token
+            if let Some(kind) = KEYWORD_MAPPING.get(&id_token.text[..]) {
+                Token {
+                    kind: *kind,
+                    ..id_token
                 }
-            } else if is_digit(c) {
-                self.integer(line)?
-            } else if is_quote(c) {
-                self.string(line)?
             } else {
+                id_token
+            }
+        } else if is_digit(c) {
+            lex_integer(line)?
+        } else if is_quote(c) {
+            lex_string(line)?
+        } else {
 
-                let startpos = TextPosition { index: line.position() };
+            let startpos = TextPosition { index: line.position() };
 
-                let next_char = line.try_get(1).map(|c| *c);
-                let mut op_token = |str: &str, kind| {
+            let next_char = line.try_get(1).map(|c| *c);
+            let mut op_token = |str: &str, kind| {
 
-                    line.pop_first();
+                line.pop_first();
 
-                    if str.len() == 2 {
-                        line.pop_first(); // consume last char
-                    }
+                if str.len() == 2 {
+                    line.pop_first(); // consume last char
+                }
 
-                    let endpos = TextPosition { index: line.position() };
+                let endpos = TextPosition { index: line.position() };
 
-                    Token {
-                        start: startpos,
-                        end: endpos,
-                        text: str.to_string(),
-                        kind: kind,
-                    }
-                };
-
-                match (c, next_char) {
-                    ('+', Some('+')) => op_token("++", TokenKind::PlusPlus),
-                    ('+', Some('=')) => op_token("+=", TokenKind::PlusEqual),
-                    ('-', Some('-')) => op_token("--", TokenKind::MinusMinus),
-                    ('-', Some('=')) => op_token("-=", TokenKind::MinusEqual),
-                    ('*', Some('=')) => op_token("*=", TokenKind::AsteriskEqual),
-                    ('+', _) => op_token("+", TokenKind::Plus),
-                    ('-', _) => op_token("-", TokenKind::Minus),
-                    ('*', _) => op_token("*", TokenKind::Asterisk),
-                    ('(', _) => op_token("(", TokenKind::LParen),
-                    (')', _) => op_token("(", TokenKind::RParen),
-                    _ => {
-                        return SyntaxError::at_pos(
-                            startpos.index,
-                            format!("Unexpected symbol '{}'", c),
-                        )
-                    }
+                Token {
+                    start: startpos,
+                    end: endpos,
+                    text: str.to_string(),
+                    kind: kind,
                 }
             };
 
-            result.push(token);
-        }
+            match (c, next_char) {
+                ('+', Some('+')) => op_token("++", TokenKind::PlusPlus),
+                ('+', Some('=')) => op_token("+=", TokenKind::PlusEqual),
+                ('-', Some('-')) => op_token("--", TokenKind::MinusMinus),
+                ('-', Some('=')) => op_token("-=", TokenKind::MinusEqual),
+                ('*', Some('=')) => op_token("*=", TokenKind::AsteriskEqual),
+                ('+', _) => op_token("+", TokenKind::Plus),
+                ('-', _) => op_token("-", TokenKind::Minus),
+                ('*', _) => op_token("*", TokenKind::Asterisk),
+                ('(', _) => op_token("(", TokenKind::LParen),
+                (')', _) => op_token("(", TokenKind::RParen),
+                _ => {
+                    return SyntaxError::at_pos(startpos.index, format!("Unexpected symbol '{}'", c))
+                }
+            }
+        };
 
-        return Ok(());
+        result.push(token);
     }
 
-    fn identifier(&self, line: &mut LexSlice) -> SyntaxResult<Token> {
+    return Ok(());
+}
 
-        let startpos = TextPosition { index: line.position() };
+fn lex_identifier(line: &mut LexSlice) -> SyntaxResult<Token> {
 
-        let mut s = String::new();
-        s.push(consume_char(line, is_identifier_start)?);
-        consume_while(line, is_identifier_body, &mut s);
+    let startpos = TextPosition { index: line.position() };
 
-        let endpos = TextPosition { index: line.position() };
+    let mut s = String::new();
+    s.push(consume_char(line, is_identifier_start)?);
+    consume_while(line, is_identifier_body, &mut s);
 
-        Ok(Token {
-            text: s,
-            start: startpos,
-            end: endpos,
-            kind: TokenKind::Identifier,
-        })
-    }
+    let endpos = TextPosition { index: line.position() };
 
-    fn integer(&self, line: &mut LexSlice) -> SyntaxResult<Token> {
+    Ok(Token {
+        text: s,
+        start: startpos,
+        end: endpos,
+        kind: TokenKind::Identifier,
+    })
+}
 
-        let startpos = TextPosition { index: line.position() };
+fn lex_integer(line: &mut LexSlice) -> SyntaxResult<Token> {
 
-        let mut s = String::new();
-        consume_while(line, is_digit, &mut s);
+    let startpos = TextPosition { index: line.position() };
 
-        let endpos = TextPosition { index: line.position() };
-        dump!(endpos, line.to_string());
+    let mut s = String::new();
+    consume_while(line, is_digit, &mut s);
 
-        Ok(Token {
-            text: s,
-            start: startpos,
-            end: endpos,
-            kind: TokenKind::Integer,
-        })
-    }
+    let endpos = TextPosition { index: line.position() };
+    dump!(endpos, line.to_string());
 
-    fn string(&self, line: &mut LexSlice) -> SyntaxResult<Token> {
+    Ok(Token {
+        text: s,
+        start: startpos,
+        end: endpos,
+        kind: TokenKind::Integer,
+    })
+}
 
-        let startpos = TextPosition { index: line.position() };
+fn lex_string(line: &mut LexSlice) -> SyntaxResult<Token> {
 
-        let mut s = String::new();
-        s.push(consume_char(line, is_quote)?);
-        consume_while(line, is_string_body, &mut s);
-        s.push(consume_char(line, is_quote)?);
+    let startpos = TextPosition { index: line.position() };
 
-        let endpos = TextPosition { index: line.position() };
+    let mut s = String::new();
+    s.push(consume_char(line, is_quote)?);
+    consume_while(line, is_string_body, &mut s);
+    s.push(consume_char(line, is_quote)?);
 
-        Ok(Token {
-            text: s,
-            start: startpos,
-            end: endpos,
-            kind: TokenKind::String,
-        })
-    }
+    let endpos = TextPosition { index: line.position() };
+
+    Ok(Token {
+        text: s,
+        start: startpos,
+        end: endpos,
+        kind: TokenKind::String,
+    })
 }
 
 fn consume_char(slice: &mut LexSlice, predicate: fn(char) -> bool) -> SyntaxResult<char> {

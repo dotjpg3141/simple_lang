@@ -1,6 +1,5 @@
 use simplelang::*;
 use simplelang::ast::*;
-use simplelang::parser::Parser;
 
 #[test]
 fn expr_integer() {
@@ -109,10 +108,10 @@ fn expr_unary_postfix() {
 }
 
 fn parse_expr(input: &str) -> ExpressionNode {
-    let tokens = lexer::Lexer::new().lex(input.as_bytes()).expect(
+    let tokens = lexer::lex(input.as_bytes()).expect(
         "Lex error",
     );
-    let (tokens, expr) = Parser::new().expression(&tokens).expect("Parse error");
+    let (tokens, expr) = parser::expression(&tokens).expect("Parse error");
     assert_eof(tokens);
     expr
 }

@@ -1,5 +1,5 @@
 use simplelang::*;
-use simplelang::lexer::Lexer;
+use simplelang::lexer;
 
 #[test]
 fn empty() {
@@ -44,8 +44,7 @@ fn whitespace() {
 }
 
 fn assert_tokens(input: &str, expected: Vec<Token>) {
-    let lexer = Lexer::new();
-    let actual = lexer.lex(input.as_bytes()).unwrap();
+    let actual = lexer::lex(input.as_bytes()).unwrap();
     assert_eq!(expected, actual);
 }
 

@@ -1,5 +1,3 @@
-use std::ops::*;
-use std::slice::Iter;
 use simplelang::indexed_slice::*;
 
 fn char_vec(text: &str) -> Vec<char> {
