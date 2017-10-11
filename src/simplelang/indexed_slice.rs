@@ -1,5 +1,7 @@
 use std::ops::*;
+use std::iter::*;
 use std::slice::Iter;
+use std::str::Chars;
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct IndexedSlice<'a, T: 'a> {
@@ -16,46 +18,31 @@ impl<'a, T> IndexedSlice<'a, T> {
         self.slice.iter()
     }
 
-    pub fn pop_first(&mut self) -> Option<&T> {
+    pub fn pop_first(&mut self) -> Option<&'a T> {
         match self.len() {
             0 => None,
             _ => {
                 let first = &self.slice[0];
                 self.slice = &self.slice[1..];
+                self.position += 1;
                 Some(first)
             }
         }
     }
 
-    pub fn first(&self) -> Option<&T> {
+    pub fn first(self) -> Option<&'a T> {
         match self.len() {
             0 => None,
             _ => Some(&self.slice[0]),
         }
     }
-
-    pub fn pop_while<F>(&mut self, f: F) -> IndexedSlice<'a, T>
-    where
-        F: Fn(&T) -> bool,
-    {
-        let mut index = self.len();
-        for i in 0..self.len() {
-            if !f(&self[i]) {
-                index = i;
-                break;
-            }
-        }
-
-        let result = IndexedSlice {
-            position: self.position,
-            slice: &self.slice[..index],
-        };
-
-        self.position += index;
-        self.slice = &self.slice[index..];
-
-        return result;
-    }
+	
+	pub fn try_get(self, index: usize) -> Option<&'a T> {
+		match self.len() {
+			0 | 1 => None,
+			_ => Some(&self.slice[index]),
+		}
+	}
 
     pub fn position(&self) -> usize {
         self.position
@@ -63,6 +50,16 @@ impl<'a, T> IndexedSlice<'a, T> {
 
     pub fn len(&self) -> usize {
         self.slice.len()
+    }
+}
+
+impl<'a> IndexedSlice<'a, char> {
+    pub fn from_chars<V>(list: &'a V) -> IndexedSlice<'a, char>
+    where
+        V: 'a + Index<RangeFull, Output = [char]>,
+    {
+        let slice = &list[..];
+        IndexedSlice { slice, position: 0 }
     }
 }
 

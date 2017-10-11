@@ -81,10 +81,13 @@ pub struct SyntaxError {
 }
 
 impl SyntaxError {
-    fn at_pos<T>(position: TextPosition, message: String) -> SyntaxResult<T> {
+    fn at_pos<T>(position: usize, message: String) -> SyntaxResult<T> {
+
+        let pos = TextPosition { index: position };
+
         Err(SyntaxError {
-            start: position,
-            end: position,
+            start: pos,
+            end: pos,
             message: message,
         })
     }

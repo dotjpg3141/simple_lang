@@ -4,6 +4,9 @@ use std::str;
 use std::iter;
 use std::collections::HashMap;
 use simplelang::*;
+use simplelang::indexed_slice::*;
+
+type LexSlice<'a> = IndexedSlice<'a, char>;
 
 pub struct Lexer {
     keyword_mapping: HashMap<&'static str, TokenKind>,
@@ -27,32 +30,26 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         for line in input.lines() {
-            let line = line.expect("unable to read input file");
-            position = self.line(line.chars(), &mut tokens, position)?;
+            let line: Vec<_> = line.expect("unable to read input file").chars().collect();
+            let mut slice = IndexedSlice::from_chars(&line);
+            self.line(&mut slice, &mut tokens)?;
         }
 
         return Ok(tokens);
     }
 
-    fn line(
-        &self,
-        line: str::Chars,
-        result: &mut Vec<Token>,
-        position: TextPosition,
-    ) -> SyntaxResult<TextPosition> {
+    fn line(&self, line: &mut LexSlice, result: &mut Vec<Token>) -> SyntaxResult<()> {
 
-        let mut line = line.peekable();
-        let mut position = position;
-
-        while let Some(c) = line.next() {
+        while let Some(c) = line.first() {
+            let c = *c;
 
             if is_whitespace(c) {
-                position = position.next();
+                line.pop_first();
                 continue;
             }
 
             let token = if is_identifier_start(c) {
-                let id_token = self.identifier(c, &mut line, position)?;
+                let id_token = self.identifier(line)?;
 
                 if let Some(kind) = self.keyword_mapping.get(&id_token.text[..]) {
                     Token {
@@ -63,25 +60,26 @@ impl Lexer {
                     id_token
                 }
             } else if is_digit(c) {
-                self.integer(c, &mut line, position)?
+                self.integer(line)?
             } else if is_quote(c) {
-                self.string(c, &mut line, position)?
+                self.string(line)?
             } else {
 
-                let next_char = line.peek().map(|c| *c);
+                let startpos = TextPosition { index: line.position() };
+
+                let next_char = line.try_get(1).map(|c| *c);
                 let mut op_token = |str: &str, kind| {
 
-                    let endpos = match str.len() {
-                        1 => position.next(),
-                        2 => {
-                            line.next(); // consume last char
-                            position.next().next()
-                        }
-                        _ => panic!(),
-                    };
+                    line.pop_first();
+
+                    if str.len() == 2 {
+                        line.pop_first(); // consume last char
+                    }
+
+                    let endpos = TextPosition { index: line.position() };
 
                     Token {
-                        start: position,
+                        start: startpos,
                         end: endpos,
                         text: str.to_string(),
                         kind: kind,
@@ -99,28 +97,31 @@ impl Lexer {
                     ('*', _) => op_token("*", TokenKind::Asterisk),
                     ('(', _) => op_token("(", TokenKind::LParen),
                     (')', _) => op_token("(", TokenKind::RParen),
-                    _ => return SyntaxError::at_pos(position, format!("Unexpected symbol '{}'", c)),
+                    _ => {
+                        return SyntaxError::at_pos(
+                            startpos.index,
+                            format!("Unexpected symbol '{}'", c),
+                        )
+                    }
                 }
             };
 
-            position = token.end;
             result.push(token);
         }
 
-        return Ok(position);
+        return Ok(());
     }
 
-    fn identifier<T>(
-        &self,
-        start: char,
-        line: &mut iter::Peekable<T>,
-        startpos: TextPosition,
-    ) -> SyntaxResult<Token>
-    where
-        T: iter::Iterator<Item = char>,
-    {
-        let mut s: String = start.to_string();
-        let endpos = read_while(line, &mut s, startpos.next(), is_identifier_body)?;
+    fn identifier(&self, line: &mut LexSlice) -> SyntaxResult<Token> {
+
+        let startpos = TextPosition { index: line.position() };
+
+        let mut s = String::new();
+        s.push(consume_char(line, is_identifier_start)?);
+        consume_while(line, is_identifier_body, &mut s);
+
+        let endpos = TextPosition { index: line.position() };
+
         Ok(Token {
             text: s,
             start: startpos,
@@ -129,17 +130,15 @@ impl Lexer {
         })
     }
 
-    fn integer<T>(
-        &self,
-        start: char,
-        line: &mut iter::Peekable<T>,
-        startpos: TextPosition,
-    ) -> SyntaxResult<Token>
-    where
-        T: iter::Iterator<Item = char>,
-    {
-        let mut s: String = start.to_string();
-        let endpos = read_while(line, &mut s, startpos.next(), is_digit)?;
+    fn integer(&self, line: &mut LexSlice) -> SyntaxResult<Token> {
+
+        let startpos = TextPosition { index: line.position() };
+
+        let mut s = String::new();
+        consume_while(line, is_digit, &mut s);
+
+        let endpos = TextPosition { index: line.position() };
+        dump!(endpos, line.to_string());
 
         Ok(Token {
             text: s,
@@ -149,62 +148,43 @@ impl Lexer {
         })
     }
 
-    fn string<T>(
-        &self,
-        start: char,
-        line: &mut iter::Peekable<T>,
-        startpos: TextPosition,
-    ) -> SyntaxResult<Token>
-    where
-        T: iter::Iterator<Item = char>,
-    {
-        let is_string_body = |c| !is_quote(c);
-        let mut s: String = start.to_string();
-        let mut endpos = read_while(line, &mut s, startpos.next(), is_string_body)?;
+    fn string(&self, line: &mut LexSlice) -> SyntaxResult<Token> {
 
-        endpos.index += 1;
+        let startpos = TextPosition { index: line.position() };
 
-        if let Some(c) = line.next() {
-            if is_quote(c) {
-                s.push(c);
-                Ok(Token {
-                    text: s,
-                    start: startpos,
-                    end: endpos,
-                    kind: TokenKind::String,
-                })
-            } else {
-                panic!("unexpected program state")
-            }
-        } else {
-            SyntaxError::at_range(startpos, endpos, format!("Unclosed string"))
-        }
+        let mut s = String::new();
+        s.push(consume_char(line, is_quote)?);
+        consume_while(line, is_string_body, &mut s);
+        s.push(consume_char(line, is_quote)?);
+
+        let endpos = TextPosition { index: line.position() };
+
+        Ok(Token {
+            text: s,
+            start: startpos,
+            end: endpos,
+            kind: TokenKind::String,
+        })
     }
 }
 
-fn read_while<T, P>(
-    input: &mut iter::Peekable<T>,
-    output: &mut String,
-    pos: TextPosition,
-    predicated: P,
-) -> SyntaxResult<TextPosition>
-where
-    T: iter::Iterator<Item = char>,
-    P: Fn(char) -> bool,
-{
-    let mut pos = pos;
+fn consume_char(slice: &mut LexSlice, predicate: fn(char) -> bool) -> SyntaxResult<char> {
 
-    loop {
+    match slice.pop_first() {
+        None => SyntaxError::at_pos(slice.position(), "Unexpected EOF".to_owned()),
+        Some(c) if predicate(*c) => Ok(*c),
+        _ => SyntaxError::at_pos(slice.position(), "Invalid symbol".to_owned()),
+    }
+}
 
-        if input.peek().map(|c| predicated(*c)) != Some(true) {
+fn consume_while(slice: &mut LexSlice, predicate: fn(char) -> bool, s: &mut String) {
+    while let Some(c) = slice.first() {
+        if predicate(*c) {
+            s.push(*slice.pop_first().unwrap());
+        } else {
             break;
         }
-
-        output.push(input.next().unwrap());
-
-        pos = pos.next();
     }
-    return Ok(pos);
 }
 
 fn is_whitespace(c: char) -> bool {
@@ -225,4 +205,8 @@ fn is_identifier_body(c: char) -> bool {
 
 fn is_quote(c: char) -> bool {
     return c == '"';
+}
+
+fn is_string_body(c: char) -> bool {
+    !is_quote(c)
 }

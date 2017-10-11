@@ -14,20 +14,13 @@ fn tokens() {
     assert_token("fn", TokenKind::FnKeyword);
     assert_token("fnabc", TokenKind::Identifier);
     assert_token("abcfn", TokenKind::Identifier);
+}
+
+#[test]
+fn op_tokens() {
     assert_token("+", TokenKind::Plus);
     assert_token("++", TokenKind::PlusPlus);
     assert_token("+=", TokenKind::PlusEqual);
-}
-
-#[test]
-fn whitespace() {
-    assert_tokens(" \r \t \n ", Vec::<Token>::new());
-    assert_tokens(" 123 ", vec![new_token(1, "123", TokenKind::Integer)]);
-}
-
-#[test]
-fn multiple_tokens() {
-
     assert_tokens(
         "+++",
         vec![
@@ -35,7 +28,19 @@ fn multiple_tokens() {
             new_token(2, "+", TokenKind::Plus),
         ],
     );
+}
 
+#[test]
+fn whitespace() {
+    assert_tokens(" \r \t \n ", Vec::<Token>::new());
+    assert_tokens(" 123 ", vec![new_token(1, "123", TokenKind::Integer)]);
+    assert_tokens(
+        "12 34 ",
+        vec![
+            new_token(0, "12", TokenKind::Integer),
+            new_token(3, "34", TokenKind::Integer),
+        ],
+    );
 }
 
 fn assert_tokens(input: &str, expected: Vec<Token>) {
