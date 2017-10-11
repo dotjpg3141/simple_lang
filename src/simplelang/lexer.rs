@@ -8,6 +8,8 @@ use simplelang::indexed_slice::*;
 
 type LexSlice<'a> = IndexedSlice<'a, char>;
 
+
+
 pub struct Lexer {
     keyword_mapping: HashMap<&'static str, TokenKind>,
 }
