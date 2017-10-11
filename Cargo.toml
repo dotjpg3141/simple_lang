@@ -1,0 +1,6 @@
+[package]
+name = "simple_lang"
+version = "0.1.0"
+authors = ["JP314 <jan.grau95@gmail.com>"]
+
+[dependencies]
